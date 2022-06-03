@@ -1,6 +1,6 @@
 # shinyCredit
 
-This is a (currently French) app designed to support the computation of loans, with an emphasize on the computation of interests.
+This is a (currently French) app designed to simulate loans, with an emphasize on the computation of interests.
 
 ## Dependencies
 
