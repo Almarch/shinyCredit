@@ -18,10 +18,11 @@ ui <- pageWithSidebar(
     numericInput("n.assu", "Nombre de mensualites assurance:",value = 300),
     numericInput("assu", "Montant mensualites assurance:",value = 0),
     br(),
+    numericInput("notaire", "Frais de notaire (%):",value = 7),
+    br(),
     textInput("new","Nouvelle ligne:"),
     actionButton("add_b","Ajout"),
     actionButton("del_b","Suppr. selection")
-
   ),
   mainPanel(
     DTOutput("tabCredit"),
@@ -34,9 +35,9 @@ server <- function(input, output, session) {
 
   ### index table
   values <- reactiveValues()
-  values[["DF"]] <- data.frame(label = c("Prix","Apport","Interets","Assurance","Remboursement"),
-                               debit = c(1e5,NA,NA,NA,NA),
-                               credit = c(NA,1e4,NA,NA,NA),
+  values[["DF"]] <- data.frame(label = c("Prix","Apport","Interets","Assurance","Remboursement","Frais de notaire","Garantie","Frais de dossier","Frais de courtage"),
+                               debit = c(1e5,NA,NA,NA,NA,NA,NA,NA,NA),
+                               credit = c(NA,1e4,NA,NA,NA,NA,NA,NA,NA),
                                stringsAsFactors = F)
   
   output$tabCredit <- renderDT({
@@ -49,7 +50,6 @@ server <- function(input, output, session) {
     })
   
   ComputeInterets <- reactive({
-    
     tm = input$taux/(1200) # 100% * 12 months
     K  = ComputeCapital()
     mensu = ComputeMensu()
@@ -73,6 +73,10 @@ server <- function(input, output, session) {
   ComputeRemb <- reactive({
     return(input$n.mensu * ComputeMensu() + input$n.assu * input$assu)
   })
+
+  ComputeNotaire <- reactive({
+    return(input$notaire * values[["DF"]][which(values[["DF"]]$label == "Prix"),"debit"] / 100)
+  })
   
   observeEvent(input$tabCredit_cell_edit, {
     info = input$tabCredit_cell_edit
@@ -85,10 +89,6 @@ server <- function(input, output, session) {
     values[["DF"]]$label  = as.character(values[["DF"]]$label)
     values[["DF"]]$debit  = as.numeric  (values[["DF"]]$debit)
     values[["DF"]]$credit = as.numeric  (values[["DF"]]$credit)
-    
-    values[["DF"]][which(values[["DF"]]$label == "Interets"),"debit"] = round(sum(ComputeInterets()$int),2)
-    values[["DF"]][which(values[["DF"]]$label == "Assurance"),"debit"] = input$n.assu * input$assu
-    values[["DF"]][which(values[["DF"]]$label == "Remboursement"),"credit"] = round(ComputeRemb(),2)
   })
   
   observeEvent(input$add_b, {
@@ -108,18 +108,23 @@ server <- function(input, output, session) {
     }
   })
   
-  observeEvent(input$add_b |
-               input$del_b |
-               input$n.mensu |
-               input$taux, {
+  editTable <- reactive({list(
+    input$tabCredit_cell_edit,
+    input$add_b,
+    input$del_b,
+    input$n.mensu,
+    input$taux,
+    input$n.assu,
+    input$assu,
+    input$notaire
+  )})
+
+  observeEvent(editTable(), {
     values[["DF"]][which(values[["DF"]]$label == "Interets"),"debit"] = round(sum(ComputeInterets()$int),2)
-    values[["DF"]][which(values[["DF"]]$label == "Remboursement"),"credit"] = round(ComputeRemb(),2)
-  })
-  
-  observeEvent(input$n.assu |
-               input$assu, {
     values[["DF"]][which(values[["DF"]]$label == "Assurance"),"debit"] = input$n.assu * input$assu
     values[["DF"]][which(values[["DF"]]$label == "Remboursement"),"credit"] = round(ComputeRemb(),2)
+    if("Frais de notaire" %in% values[["DF"]]$label)
+      values[["DF"]][which(values[["DF"]]$label == "Frais de notaire"),"debit"] = round(ComputeNotaire(),2)
   })
   
   output[["mensu"]] <- shiny::renderText({
