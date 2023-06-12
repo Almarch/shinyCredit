@@ -12,11 +12,14 @@ ui <- pageWithSidebar(
     
     ### param
     numericInput("taux", "Taux (%):",value = 1.5),
-    numericInput("n.mensu", "Nombre mensualites credit:",value = 300),
-    textOutput("mensu"),
+    numericInput("n_mensu", "Nombre mensualites credit:",value = 300),
+    textOutput("mensu1"),
+    textOutput("mensu2"),
     br(),
-    numericInput("n.assu", "Nombre de mensualites assurance:",value = 300),
-    numericInput("assu", "Montant mensualites assurance:",value = 0),
+
+    numericInput("t_assu", "Assurance (%):",value = 0),
+    textOutput("assurance1"),
+    textOutput("assurance2"),
     br(),
     numericInput("notaire", "Frais de notaire (%):",value = 7),
     br(),
@@ -32,6 +35,11 @@ ui <- pageWithSidebar(
 )
 
 server <- function(input, output, session) {
+
+  calculMensu = function(K,t,n){
+    x = (K * t)/(1-(1 + t)^(-n))
+    return(x)
+  }
 
   ### index table
   values <- reactiveValues()
@@ -55,29 +63,44 @@ server <- function(input, output, session) {
     mensu = ComputeMensu()
     
     interets = c()
-    for(i in 1:input$n.mensu){
+    for(i in 1:input$n_mensu){
       interets = c(interets, tm * K[length(K)])
       K  = c(K, K[length(K)] - mensu + interets[length(interets)])
     }
     
-    return(list(int = interets,K = K))
+    return(list(int = interets, K = K))
   })
+
   ComputeMensu <- reactive({
     tm = input$taux/(1200) # 100% * 12 months
     K  = ComputeCapital()
     
-    mensu = (K * tm)/(1-(1 + tm)^(-(input$n.mensu)))
+    mensu = calculMensu(K,tm,input$n_mensu)
+    return(mensu)
+  })
+
+  ComputeTAEG <- reactive({
+    tm = input$taux/(1200) # 100% * 12 months
+    ta = input$t_assu/(1200)
+    K  = ComputeCapital()
+    
+    taeg = calculMensu(K,tm + ta,input$n_mensu)
+    return(taeg)
+  })
+
+  ComputeAssurance <- reactive({
+    mensu = ComputeTAEG() - ComputeMensu()
     return(mensu)
   })
   
   ComputeRemb <- reactive({
-    return(input$n.mensu * ComputeMensu() + input$n.assu * input$assu)
+    return(input$n_mensu * ComputeMensu() + input$n_mensu * ComputeAssurance())
   })
 
   ComputeNotaire <- reactive({
     return(input$notaire * values[["DF"]][which(values[["DF"]]$label == "Prix"),"debit"] / 100)
   })
-  
+
   observeEvent(input$tabCredit_cell_edit, {
     info = input$tabCredit_cell_edit
     i = info$row
@@ -112,38 +135,55 @@ server <- function(input, output, session) {
     input$tabCredit_cell_edit,
     input$add_b,
     input$del_b,
-    input$n.mensu,
+    input$n_mensu,
     input$taux,
-    input$n.assu,
-    input$assu,
+    input$t_assu,
     input$notaire
   )})
 
   observeEvent(editTable(), {
     values[["DF"]][which(values[["DF"]]$label == "Interets"),"debit"] = round(sum(ComputeInterets()$int),2)
-    values[["DF"]][which(values[["DF"]]$label == "Assurance"),"debit"] = input$n.assu * input$assu
+    values[["DF"]][which(values[["DF"]]$label == "Assurance"),"debit"] = round(ComputeAssurance() * input$n_mensu,2)
     values[["DF"]][which(values[["DF"]]$label == "Remboursement"),"credit"] = round(ComputeRemb(),2)
     if("Frais de notaire" %in% values[["DF"]]$label)
       values[["DF"]][which(values[["DF"]]$label == "Frais de notaire"),"debit"] = round(ComputeNotaire(),2)
   })
   
-  output[["mensu"]] <- shiny::renderText({
-    paste0("Mensualites credit = ",round(ComputeMensu(),2))
+  output[["mensu1"]] <- shiny::renderText({
+    paste0("Total emprunté = ",round(ComputeCapital(),2))
+  })
+    output[["mensu2"]] <- shiny::renderText({
+    paste0("Mensualites hors assurance = ",round(ComputeMensu(),2))
+  })
+
+  output[["assurance1"]] <- shiny::renderText({
+    paste0("Mensualites asurance = ",round(ComputeAssurance(),2))
+  })
+
+  output[["assurance2"]] <- shiny::renderText({
+    paste0("Soit une mensualité totale = ",round(ComputeTAEG(),2))
   })
   
   output$graphCredit <- renderPlot({
-    
-    remb = rep(ComputeMensu(),input$n.mensu)
-    remba = remb
-    remba[1:input$n.assu] = remb[1:input$n.assu] + input$assu
-    seq.x = seq(from = 0, to = input$n.mensu, by = 12)
+
+    remb  = rep(ComputeMensu(),input$n_mensu)
+    remba = rep(ComputeTAEG(), input$n_mensu)
+    seq.x = seq(from = 0, to = input$n_mensu, by = 12)
 
     plot(remba, col = "blue", lwd = 3,
          type="l" ,axes = F,
          ylim = c(0,max(remba)),
          main="Remboursement",
          xlab = "annees",ylab = "")
-    legend("right",pch = rep(19,3), col = c("blue","black","red"),legend = c("Total","HA","interets"),bty="n")
+    legend("right",
+           pch = rep(19,3),
+           col = c("blue",
+                   "black",
+                   "red"),
+           legend = c("Total",
+                      "HA",
+                      "interets"),
+            bty="n")
     box()
     axis(side=1, at = seq.x, label = seq.x/12)
     axis(side=2)
@@ -153,7 +193,7 @@ server <- function(input, output, session) {
   
   output$graphRest <- renderPlot({
     
-    seq.x = seq(from = 0, to = input$n.mensu, by = 12)
+    seq.x = seq(from = 0, to = input$n_mensu, by = 12)
     
     plot(ComputeInterets()$K, col = "black", lwd = 3,
          type="l" ,axes = F,
