@@ -79,17 +79,17 @@ server <- function(input, output, session) {
     return(mensu)
   })
 
-  ComputeTAEG <- reactive({
+  ComputeTotal <- reactive({
     tm = input$taux/(1200) # 100% * 12 months
     ta = input$t_assu/(1200)
     K  = ComputeCapital()
     
-    taeg = calculMensu(K,tm + ta,input$n_mensu)
-    return(taeg)
+    total = calculMensu(K,tm + ta,input$n_mensu)
+    return(total)
   })
 
   ComputeAssurance <- reactive({
-    mensu = ComputeTAEG() - ComputeMensu()
+    mensu = ComputeTotal() - ComputeMensu()
     return(mensu)
   })
   
@@ -161,13 +161,13 @@ server <- function(input, output, session) {
   })
 
   output[["assurance2"]] <- shiny::renderText({
-    paste0("Soit une mensualité totale = ",round(ComputeTAEG(),2))
+    paste0("Soit une mensualité totale = ",round(ComputeTotal(),2))
   })
   
   output$graphCredit <- renderPlot({
 
     remb  = rep(ComputeMensu(),input$n_mensu)
-    remba = rep(ComputeTAEG(), input$n_mensu)
+    remba = rep(ComputeTotal(), input$n_mensu)
     seq.x = seq(from = 0, to = input$n_mensu, by = 12)
 
     plot(remba, col = "blue", lwd = 3,
